@@ -1,0 +1,26 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.env
+
+# Runtime state (recreated on demand)
+demo/policy/*.yaml
+demo/policy/*.json
+demo/policy/*.jsonl
+demo/sandbox/
+demo/traces/runs/
+demo/traces/reliability/
+
+# Deck build artifacts
+node_modules/
+deck/out/*.html
+.DS_Store
+
+# Stray lockfile at the repo root (the deck's lockfile is deck/package-lock.json)
+/package-lock.json
+
+# Exported PDFs and editor/agent files
+*.pdf
+.cursor/

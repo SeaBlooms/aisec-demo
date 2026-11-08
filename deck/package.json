@@ -1,0 +1,15 @@
+{
+  "name": "aisec-deck",
+  "private": true,
+  "description": "Marp deck for the AI security panel",
+  "scripts": {
+    "preview": "marp --theme-set theme.css --preview deck.md",
+    "build:html": "marp --theme-set theme.css --html --allow-local-files deck.md -o out/deck.html",
+    "build:pdf": "marp --theme-set theme.css --html --allow-local-files --pdf --pdf-notes deck.md -o out/deck.pdf",
+    "build:pptx": "marp --theme-set theme.css --html --allow-local-files --pptx deck.md -o out/deck.pptx",
+    "build": "npm run build:pdf && npm run build:pptx && npm run build:html"
+  },
+  "devDependencies": {
+    "@marp-team/marp-cli": "^4.2.3"
+  }
+}

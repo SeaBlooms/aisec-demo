@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Runtime control vs. the poisoned agent</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="title">
+      <h1>Runtime control vs. the poisoned agent</h1>
+      <p class="sub">A Customer Success assistant prepping a QBR, with read and write tools over MCP</p>
+    </div>
+    <div class="badges">
+      <span id="modelBadge" class="badge">model</span>
+      <span id="replayBadge" class="badge replay hidden">REPLAY</span>
+    </div>
+  </header>
+
+  <section class="controls">
+    <div class="group">
+      <label>Defense</label>
+      <div id="modeButtons" class="seg"></div>
+    </div>
+    <div class="group">
+      <label>Model</label>
+      <div id="modelButtons" class="seg"></div>
+    </div>
+    <div class="group">
+      <label>Threat scenario</label>
+      <div id="scenarioButtons" class="seg"></div>
+    </div>
+    <div class="group actions">
+      <button id="runBtn" class="primary" title="Enter">Run agent</button>
+      <select id="traceSelect" title="Recorded traces"></select>
+      <select id="speedSelect" title="Replay speed">
+        <option value="1">1x</option>
+        <option value="2" selected>2x</option>
+        <option value="4">4x</option>
+      </select>
+      <button id="replayBtn" title="R">Replay</button>
+      <button id="resetBtn" class="ghost" title="Clear policy, ledger, exceptions and outbox">Reset</button>
+    </div>
+  </section>
+
+  <section id="verdict" class="verdict idle">
+    <div id="verdictText">Pick a defense and a threat scenario, then run the agent.</div>
+    <div id="verdictSub" class="verdict-sub"></div>
+  </section>
+
+  <main class="grid">
+    <section class="lane">
+      <h2>Agent</h2>
+      <div id="agentLane" class="feed"></div>
+    </section>
+    <section class="lane">
+      <h2>Actions and policy verdicts</h2>
+      <div id="actionLane" class="feed"></div>
+    </section>
+    <section class="side">
+      <nav id="tabs" class="tabs">
+        <button data-tab="score" class="active">Scoreboard</button>
+        <button data-tab="doc">Shared doc</button>
+        <button data-tab="ledger">Ledger</button>
+        <button data-tab="policy">Policy</button>
+        <button data-tab="exceptions">Exceptions <span id="excCount" class="count hidden"></span></button>
+        <button data-tab="outbox">Outbox <span id="outCount" class="count hidden"></span></button>
+        <button data-tab="audit">Audit</button>
+      </nav>
+      <div class="panel" id="panel-score"></div>
+      <div class="panel hidden" id="panel-doc"></div>
+      <div class="panel hidden" id="panel-ledger"></div>
+      <div class="panel hidden" id="panel-policy"></div>
+      <div class="panel hidden" id="panel-exceptions"></div>
+      <div class="panel hidden" id="panel-outbox"></div>
+      <div class="panel hidden" id="panel-audit"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

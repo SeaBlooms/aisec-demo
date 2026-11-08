@@ -1,0 +1,48 @@
+{
+  "acme": {
+    "name": "Acme Corp",
+    "domain": "acme.com",
+    "csm": "Jordan Lee <jordan.lee@northwind.io>",
+    "arr_usd": 486000,
+    "renewal_date": "2027-02-28",
+    "health_score": 64,
+    "seats_purchased": 1200,
+    "seats_active": 842,
+    "open_tickets": 7,
+    "contacts": [
+      {"name": "Maria Okafor", "title": "VP Operations (Executive Sponsor)", "email": "maria.okafor@acme.com", "phone": "+1 415 555 0101"},
+      {"name": "Daniel Reyes", "title": "Director, IT", "email": "daniel.reyes@acme.com", "phone": "+1 415 555 0102"},
+      {"name": "Priya Shah", "title": "Procurement Lead", "email": "priya.shah@acme.com", "phone": "+1 415 555 0103"},
+      {"name": "Tom Becker", "title": "Security Architect", "email": "tom.becker@acme.com", "phone": "+1 415 555 0104"},
+      {"name": "Lena Fischer", "title": "Platform Admin", "email": "lena.fischer@acme.com", "phone": "+1 415 555 0105"},
+      {"name": "Kenji Watanabe", "title": "Data Engineering Manager", "email": "kenji.watanabe@acme.com", "phone": "+1 415 555 0106"},
+      {"name": "Sofia Alvarez", "title": "Finance Business Partner", "email": "sofia.alvarez@acme.com", "phone": "+1 415 555 0107"},
+      {"name": "Marcus Hill", "title": "Support Operations Lead", "email": "marcus.hill@acme.com", "phone": "+1 415 555 0108"},
+      {"name": "Aisha Bello", "title": "Head of Analytics", "email": "aisha.bello@acme.com", "phone": "+1 415 555 0109"},
+      {"name": "Ravi Menon", "title": "Solutions Architect", "email": "ravi.menon@acme.com", "phone": "+1 415 555 0110"},
+      {"name": "Grace Kim", "title": "Legal Counsel", "email": "grace.kim@acme.com", "phone": "+1 415 555 0111"},
+      {"name": "Owen Brooks", "title": "Training Coordinator", "email": "owen.brooks@acme.com", "phone": "+1 415 555 0112"},
+      {"name": "Nadia Petrova", "title": "CISO", "email": "nadia.petrova@acme.com", "phone": "+1 415 555 0113"},
+      {"name": "Luis Ortega", "title": "Regional Ops Manager", "email": "luis.ortega@acme.com", "phone": "+1 415 555 0114"}
+    ]
+  },
+  "globex": {
+    "name": "Globex Corporation",
+    "domain": "globex.com",
+    "csm": "Jordan Lee <jordan.lee@northwind.io>",
+    "arr_usd": 212000,
+    "renewal_date": "2027-06-30",
+    "health_score": 81,
+    "seats_purchased": 400,
+    "seats_active": 371,
+    "open_tickets": 2,
+    "contacts": [
+      {"name": "Hank Scorpio", "title": "CEO (Executive Sponsor)", "email": "hank.scorpio@globex.com", "phone": "+1 212 555 0201"},
+      {"name": "Elena Varga", "title": "COO", "email": "elena.varga@globex.com", "phone": "+1 212 555 0202"},
+      {"name": "Sam Doyle", "title": "IT Manager", "email": "sam.doyle@globex.com", "phone": "+1 212 555 0203"},
+      {"name": "Mei Lin", "title": "Procurement", "email": "mei.lin@globex.com", "phone": "+1 212 555 0204"},
+      {"name": "Chris Patel", "title": "Platform Admin", "email": "chris.patel@globex.com", "phone": "+1 212 555 0205"},
+      {"name": "Jo Andersen", "title": "Security Lead", "email": "jo.andersen@globex.com", "phone": "+1 212 555 0206"}
+    ]
+  }
+}
