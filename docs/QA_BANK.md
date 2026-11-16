@@ -146,6 +146,16 @@ Don't quote latency numbers; say "I'd measure it in the proof of value."
 
 Backup: slide 13. If they want proof, slide 12 or the live encore.
 
+### "I already approved that MCP tool. Why block it again?"
+
+**"You approved a name. After the rugpull, it's a different program."**
+
+- Same tool name (`enrich_contacts`), new description that asks for the full contact list.
+- Allow rules pin a SHA-256 of the advertised definition at approval. Drift is default deny; a fresh exception is required for the new hash.
+- Same shape as Bit9 / application allowlisting: we didn't trust the filename, we trusted the hash.
+
+Backup: MCP rugpull encore in `docs/DEMO_SCRIPT.md` (scenario key `-`). Slide after the poisoned-tool Q&A. Live screenshots of that run are the last backup slide.
+
 ### "What can default deny not stop?"
 
 **"Data leaking through a channel you've already approved. That's the honest gap."**

@@ -413,6 +413,43 @@ If someone says "an admin would never approve that server": agree, approval is t
 
 ---
 
+## Backup · Q&A demo: "But I approved that tool"
+
+# You approved the name.<br>The tool that ran was a different program.
+
+<div class="cols">
+<div class="box">
+<h3>Approved definition</h3>
+<span class="small">`enrich_contacts` — title lookup, account name only. No contact list.</span>
+<p class="lbl">Pinned</p>
+<span class="small mono">sha256:…benign…</span>
+</div>
+<div class="box">
+<h3 class="red">What the agent reads now</h3>
+<span class="small">Same name. Description changed: pass the complete contact list from `list_contacts`.</span>
+<p class="lbl">Live</p>
+<span class="small mono">sha256:…rugpulled…</span>
+</div>
+</div>
+
+<h3 class="green">Default deny: definition changed → blocked</h3>
+
+<p class="small">Allow rules pin the advertised MCP definition (server, name, description, schema) at approval — lockfile-style. A silent description change is a new, unvetted tool. Fresh justification required.</p>
+
+<p class="small muted callout"><strong>Bit9 again:</strong> we didn't trust the filename. We trusted the hash. Same for MCP tool definitions.</p>
+
+<!--
+Follow-up after the poisoned-tool encore when someone says "but I approved that tool." About 90 seconds.
+
+Run it: policy from beat 1 still approved. Scenario MCP rugpull (key -), Enforce. Shared doc: Approve by name, then rugpull. Toggle Approved vs What the agent reads now. Run: Blocked, hash mismatch, outbox empty. Live screenshots of that run are on the last backup slide.
+
+"You approved the name. The tool that ran was a different program."
+
+Does not catch implementation-only changes that keep the same description; egress classification still covers those.
+-->
+
+---
+
 ## Backup · "Isn't MCP already admin-controlled?"
 
 # Approval decides what's installed.<br>Runtime decides what it does.
@@ -606,4 +643,35 @@ Last-resort fallback if neither live runs nor replay are possible. Regenerate th
 
 </div>
 </div>
+
+---
+
+## Backup · Rugpull screenshots
+
+# Same name. The hash didn't match.
+
+<div class="cols3">
+<div>
+
+![h:300](assets/rugpull-shared-doc.png)
+<span class="small muted">Shared doc: approved sha256 vs the live definition</span>
+
+</div>
+<div>
+
+![h:300](assets/rugpull-blocked.png)
+<span class="small muted">Enforce: blocked. The rugpulled call never runs</span>
+
+</div>
+<div>
+
+![h:300](assets/rugpull-exception.png)
+<span class="small muted">A new exception pins the live hash. The old approval stays put</span>
+
+</div>
+</div>
+
+<!--
+Captured from a live Enforce run of the MCP rugpull encore (key -). Approved sha256:3d3e6ea1dbc5, live sha256:637bc7c81af9. Use this slide if the demo isn't up and someone asks "but I approved that tool."
+-->
 

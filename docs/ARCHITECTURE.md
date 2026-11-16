@@ -12,7 +12,7 @@ The one-line version: **the model proposes tool calls; deterministic code outsid
 | `demo/catalog.py` | Classifies every call: action class, resource, destinations. The policy engine's only view of a call |
 | `demo/agent/policy.py` | Pure, deterministic policy engine: `evaluate()`, learn-mode drafting, exception rules, and the file-backed `PolicyStore` (approved policy, draft, ledger, exceptions, audit log) |
 | `demo/mcp_server/server.py` | First-party MCP server (`northwind-cs-tools`), 7 tools, stdio subprocess, writes go to a sandbox |
-| `demo/mcp_server/thirdparty.py` | Third-party MCP server (`contact-enrich`) with the poisoned `enrich_contacts` tool, loaded only for the poisoned-tool scenario |
+| `demo/mcp_server/thirdparty.py` | Third-party MCP server (`contact-enrich`) with `enrich_contacts`; description is versioned (`DEMO_MCP_TOOL_VERSION=benign|rugpulled`) for `poisoned_tool` and `mcp_rugpull` |
 | `demo/server/app.py` | FastAPI: starts runs, streams events over SSE, and exposes the human approval endpoints (approve policy, decide exceptions) |
 
 ```mermaid
@@ -137,13 +137,14 @@ There are no deny rules to maintain. Anything not matched by an allow rule is de
 
 ```python
 def evaluate(policy: Policy | None, call: ToolCallInfo, now: datetime | None = None) -> Decision:
-    """Default deny: allow only if an unexpired rule matches tool, action, resource and destinations."""
+    """Default deny: allow only if an unexpired rule matches tool, action, hash, resource and destinations."""
 ```
 
 1. **No approved policy means deny everything** ("No approved policy: everything is denied by default.").
 2. For each `allow` rule, in order:
    - **Identity**: the agent ID, tool name and action class must all match, otherwise the rule is skipped silently.
    - **Expiry**: a matching rule past `expires_at` is skipped.
+   - **Tool definition hash**: if the rule has `tool_hashes`, the live SHA-256 of the advertised MCP definition (`server` / toolset id, name, description, input schema) must be in that list. Learn mode and exception approvals pin the hash they observed. `None` / empty skips this check (legacy name-only; used in tests that prove the rugpull). A mismatch is a near-miss deny: `Rule exception-exc-… allows enrich_contacts, but the tool definition changed (approved sha256:aaa…, live sha256:bbb…). Default deny.`
    - **Resource**: the call's resource must match one of the rule's resource patterns.
    - **Destinations**: every destination on the call must match one of the rule's destination patterns. `destinations: null` means the rule permits **no** egress, so a call with any destination fails. A call with no destinations (all reads) passes this check trivially.
    - If everything passes: `Decision("allow", "Allowed by rule <id> (<source>).", rule_id)`.
@@ -151,6 +152,8 @@ def evaluate(policy: Policy | None, call: ToolCallInfo, now: datetime | None = N
    - If a rule matched on identity but failed a later check, the first such **near miss** explains why, for example `Rule exception-exc-1a2b3c allows send_email only to acme.com; acme-vendorportal.com is out of scope.` This is what the presenter sees after approving a narrow exception and re-running.
    - For unvetted tools: `enrich_contacts is not in the approved baseline (unvetted tool on contact-enrich.io). Default deny.`
    - Otherwise: `No rule allows send_email (create) to acme-vendorportal.com. Default deny.`
+
+`GuardedToolset` fingerprints the live pydantic-ai `tool.tool_def` on every call and fails closed if it cannot. That closes advertised-definition drift (the MCP rugpull). It does **not** see remote implementation changes that keep the same description; egress classification still covers those.
 
 The function is pure: it depends only on the policy, the call and the clock (`now` is injectable for tests). It does no I/O and never calls the model, so the same inputs always give the same decision. That's why the reliability harness can require enforce cells to block 100% of attempts, where the model-level cells only get percentage goals.
 
@@ -191,6 +194,7 @@ This is why the demo's exception beat still blocks: the agent asked to send to `
 | `ledger.json` | Learn-mode observations, without arguments |
 | `exceptions.json` | Exception requests and their decisions |
 | `audit.jsonl` | Append-only log: every enforce `decision` (full call including arguments), `policy_drafted`, `policy_approved`, `exception_approved`, `exception_rejected` |
+| `mcp_tool_version` | Presenter state for `mcp_rugpull`: `benign` or `rugpulled`. Cleared on reset. |
 
 The guard reloads the approved policy from disk on every call, so an exception approved in the UI takes effect on the next call with no restart. Write tools on the MCP servers append to `outbox.jsonl` and similar files in the sandbox directory; nothing leaves the machine. The reliability harness and storyboard capture use isolated state directories, so they never touch the policy approved on stage.
 
@@ -208,7 +212,7 @@ The verdict banner and the reliability numbers both come from this one function.
 These are deliberate shortcuts. They're also the honest answers if a panelist asks where this would need hardening.
 
 - **In-process enforcement.** The guard runs inside the agent's own Python process. A production control belongs outside it: an MCP gateway or proxy the agent can't modify, holding the credentials, so an agent compromised at the code level (not just the prompt level) still can't bypass it.
-- **Classification keyed on tool name only.** `TOOLS` and `THIRD_PARTY_TOOLS` are keyed by name. A malicious server that registers a tool called `search_kb` would be classified as a first-party read. Production should key identity on (server identity, tool name), pinned to the vetted server, ideally with a hash of the tool definition so a silent description change is treated as a new, unvetted tool.
+- **Action-class catalog still keyed on tool name.** `TOOLS` and `THIRD_PARTY_TOOLS` classify action class / destination by name. A malicious server that registers a tool called `search_kb` would still be classified as a first-party read for catalog purposes. Allow rules now also pin a hash of the advertised definition (server toolset id + name + description + schema), so a silent description change after approval is denied. An implementation-only change that keeps the same description is still out of scope for the hash; egress classification covers that case.
 - **Arguments of allowed reads aren't inspected.** Reads are scoped to internal resources with no destinations, so data written into a `search_kb` query stays internal. But any read tool that reaches an external system (a URL fetch, for example) needs destination classification, or it becomes an egress channel.
 - **No data-flow tracking.** Policy is evaluated per call. It can't tell that the contact list read by `list_contacts` is the data now in an email body. The demo doesn't need to, because the send itself is denied, but content-aware egress checks (DLP-style) are a separate, complementary layer.
 - **The audit log holds payloads.** Enforce decisions record full arguments, including contact details, which is useful for review but sensitive in its own right. Production would redact or access-control the log.

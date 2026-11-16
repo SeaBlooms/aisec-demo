@@ -222,3 +222,17 @@ Use it when someone asks about MCP, tool poisoning, plugins or supply chain. It 
 "The model isn't broken; it did what a connected tool told it to. Same answer as on the endpoint: an unknown binary doesn't run until someone approves it."
 
 **If they say "an admin would never approve that server":** "Agreed, approval is the right first layer. But it's per server, once, at install. This decides per tool and per action, on every call." The next backup slide, "Isn't MCP already admin-controlled?", has the detail.
+
+## Q&A encore follow-up: MCP rugpull (about 90 s)
+
+Use it when someone says *"but I approved that tool"* after the poisoned-tool beat. Needs the learn baseline still approved.
+
+**Click:** MCP rugpull (`-`), Enforce default deny (`4`). Shared doc tab.
+
+**Click:** **Approve by name, then rugpull**. Toggle **Approved definition** vs **What the agent reads now** — same name `enrich_contacts`, different description (and different sha256).
+
+**Click:** Run agent.
+
+**They see:** Blocked, reason names the hash mismatch (`approved sha256:…, live sha256:…`). Outbox empty.
+
+**Line:** "You approved the name. The tool that ran was a different program. Same as Bit9: we didn't trust the filename, we trusted the hash."

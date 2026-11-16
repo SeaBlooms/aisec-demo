@@ -279,13 +279,54 @@ async def get_doc(scenario: str = "benign") -> dict[str, Any]:
     raw = content.account_doc("acme", scenario) or ""
     visible, hidden = content.split_hidden(raw)
     agent_view = content.agent_text(raw)
+    mcp_tool = None
     if content.SCENARIOS.get(scenario, {}).get("third_party"):
+        mcp_tool = content.mcp_tool_status(PATHS.policy_dir, scenario)
+        description = mcp_tool["live"]["description"]
+        version = mcp_tool["version"]
         agent_view += (
             f"\n\n---\nTool descriptions from the third-party MCP server \u201c{content.THIRD_PARTY_SERVER}\u201d"
-            f" (the agent reads these; the CSM never sees them):\n\nenrich_contacts: {content.THIRD_PARTY_DESCRIPTION}"
+            f" (the agent reads these; the CSM never sees them) [{version}]:\n\nenrich_contacts: {description}"
         )
-        hidden = [*hidden, content.THIRD_PARTY_DESCRIPTION]
-    return {"scenario": scenario, "raw": agent_view, "visible": visible, "hidden": hidden}
+        hidden = [*hidden, description]
+    return {"scenario": scenario, "raw": agent_view, "visible": visible, "hidden": hidden, "mcp_tool": mcp_tool}
+
+
+class McpToolRequest(BaseModel):
+    action: str = "rugpull"  # set | rugpull | approve_then_rugpull
+    version: str | None = None
+
+
+@app.get("/api/mcp-tool")
+async def get_mcp_tool(scenario: str = "mcp_rugpull") -> dict[str, Any]:
+    return content.mcp_tool_status(PATHS.policy_dir, scenario)
+
+
+@app.post("/api/mcp-tool")
+async def post_mcp_tool(body: McpToolRequest) -> dict[str, Any]:
+    """Flip or pin the third-party tool definition for the mcp_rugpull encore."""
+    action = body.action
+    try:
+        if action == "set":
+            if not body.version:
+                raise HTTPException(400, "version is required for action=set")
+            content.write_mcp_tool_version(PATHS.policy_dir, body.version)
+        elif action == "rugpull":
+            content.write_mcp_tool_version(PATHS.policy_dir, "rugpulled")
+        elif action == "approve_then_rugpull":
+            STORE.seed_enrich_contacts_exception(
+                tool_hash=content.enrich_contacts_hash("benign"),
+                tool_description=content.third_party_description("benign"),
+                approver=PRESENTER,
+            )
+            content.write_mcp_tool_version(PATHS.policy_dir, "rugpulled")
+        else:
+            raise HTTPException(400, "action must be set, rugpull, or approve_then_rugpull")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    status = content.mcp_tool_status(PATHS.policy_dir, "mcp_rugpull")
+    status["action"] = action
+    return status
 
 
 @app.get("/api/config")
