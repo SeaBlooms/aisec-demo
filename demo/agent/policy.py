@@ -20,7 +20,7 @@ from typing import Any, Literal
 
 import yaml
 
-from demo.catalog import ToolCallInfo
+from demo.catalog import THIRD_PARTY_TOOLS, ToolCallInfo, short_hash
 from demo.config import AGENT_ID
 
 Effect = Literal["allow", "deny"]
@@ -46,6 +46,8 @@ class Rule:
     resources: list[str] = field(default_factory=lambda: ["*"])
     # None means "this rule permits no outbound destinations". Egress must be scoped explicitly.
     destinations: list[str] | None = None
+    # None / empty = name-only (legacy). Learn and exceptions pin the advertised definition hash.
+    tool_hashes: list[str] | None = None
     agents: list[str] = field(default_factory=lambda: [AGENT_ID])
     effect: Effect = "allow"
     source: Literal["learn", "exception", "manual"] = "manual"
@@ -118,7 +120,7 @@ class Decision:
 
 
 def evaluate(policy: Policy | None, call: ToolCallInfo, now: datetime | None = None) -> Decision:
-    """Default deny: allow only if an unexpired rule matches tool, action, resource and destinations."""
+    """Default deny: allow only if an unexpired rule matches tool, action, hash, resource and destinations."""
     now = now or utcnow()
     if policy is None:
         return Decision("deny", "No approved policy: everything is denied by default.")
@@ -130,6 +132,16 @@ def evaluate(policy: Policy | None, call: ToolCallInfo, now: datetime | None = N
         if rule.expired(now):
             near_miss = near_miss or f"Rule {rule.id} allowed this but expired at {rule.expires_at}."
             continue
+        if rule.tool_hashes:
+            live = call.tool_hash
+            if not live or live not in rule.tool_hashes:
+                approved = ", ".join(f"sha256:{short_hash(h)}" for h in rule.tool_hashes)
+                live_s = f"sha256:{short_hash(live)}" if live else "missing"
+                near_miss = near_miss or (
+                    f"Rule {rule.id} allows {call.tool}, but the tool definition changed "
+                    f"(approved {approved}, live {live_s}). Default deny."
+                )
+                continue
         if not rule.matches_resource(call):
             near_miss = near_miss or f"Rule {rule.id} allows {call.tool} only on {', '.join(rule.resources)}."
             continue
@@ -170,9 +182,11 @@ def draft_policy(observations: list[dict[str, Any]], agent: str = AGENT_ID) -> P
     grouped: dict[tuple[str, str], dict[str, Any]] = {}
     for obs in observations:
         key = (obs["tool"], obs["action_class"])
-        g = grouped.setdefault(key, {"resources": set(), "destinations": set(), "count": 0})
+        g = grouped.setdefault(key, {"resources": set(), "destinations": set(), "hashes": set(), "count": 0})
         g["resources"].add(generalize_resource(obs["resource"]))
         g["destinations"].update(obs.get("destinations") or [])
+        if h := obs.get("tool_hash"):
+            g["hashes"].add(h)
         g["count"] += 1
 
     policy = Policy(agent=agent)
@@ -183,6 +197,7 @@ def draft_policy(observations: list[dict[str, Any]], agent: str = AGENT_ID) -> P
             action_classes=[action],
             resources=sorted(g["resources"]),
             destinations=sorted(g["destinations"]) or None,
+            tool_hashes=sorted(g["hashes"]) or None,
             agents=[agent],
             source="learn",
             justification=f"Observed {g['count']}x in learn mode",
@@ -212,10 +227,16 @@ class ExceptionRequest:
     expires_at: str | None = None
     decided_by: str = ""
     rule_id: str | None = None
+    tool_hash: str | None = None
+    tool_description: str | None = None
 
 
 def new_exception_request(call: ToolCallInfo, deny_reason: str, run_id: str = "") -> ExceptionRequest:
     preview = json.dumps(call.args)[:400]
+    description = None
+    if call.tool_definition:
+        raw = call.tool_definition.get("description")
+        description = str(raw) if raw is not None else None
     return ExceptionRequest(
         id=f"exc-{uuid.uuid4().hex[:6]}",
         created_at=_iso(utcnow()) or "",
@@ -226,6 +247,8 @@ def new_exception_request(call: ToolCallInfo, deny_reason: str, run_id: str = ""
         args_preview=preview,
         deny_reason=deny_reason,
         run_id=run_id,
+        tool_hash=call.tool_hash,
+        tool_description=description,
     )
 
 
@@ -249,6 +272,7 @@ def exception_rule(
         action_classes=[req.action_class],
         resources=[req.resource],
         destinations=scope,
+        tool_hashes=[req.tool_hash] if req.tool_hash else None,
         source="exception",
         justification=justification.strip(),
         approved_by=approver,
@@ -308,6 +332,7 @@ class PolicyStore:
     def observe(self, call: ToolCallInfo, run_id: str = "") -> dict[str, Any]:
         entry = {**call.to_dict(), "ts": _iso(utcnow()), "run_id": run_id}
         entry.pop("args", None)
+        entry.pop("tool_definition", None)  # pin the hash; drop the bulky definition from the ledger
         entries = self.ledger()
         entries.append(entry)
         self.ledger_path.write_text(json.dumps(entries, indent=2))
@@ -371,6 +396,59 @@ class PolicyStore:
         self.audit(f"exception_{req.status}", asdict(req))
         return req
 
+    def seed_enrich_contacts_exception(
+        self,
+        *,
+        tool_hash: str,
+        tool_description: str,
+        justification: str = "CS uses contact-enrich for QBR, ticket CS-1042",
+        destination_scope: list[str] | None = None,
+        ttl_minutes: int = 60,
+        approver: str = "Presenter",
+    ) -> ExceptionRequest:
+        """Approve (or create) an enrich_contacts exception pinned to a specific definition hash.
+
+        Used by the rugpull encore shortcut and the reliability harness: pin the benign hash, then
+        flip the live server to rugpulled so the next run is a hash-mismatch deny.
+
+        Drops any prior enrich_contacts allow rules first. Approving the poisoned_tool exception from
+        the Exceptions tab pins the *rugpulled* hash; leaving that rule in place would allow the
+        attack after the flip and hide the hash-mismatch story.
+        """
+        scope = destination_scope or [THIRD_PARTY_TOOLS["enrich_contacts"]]
+        policy = self.approved()
+        if policy is None:
+            raise ValueError("Approve a baseline policy before granting exceptions.")
+        policy.rules = [r for r in policy.rules if "enrich_contacts" not in r.tools]
+        self.save_approved(policy)
+
+        items = self.exceptions()
+        # Prefer a pending request; otherwise seed a fresh one. Prior approved/rejected rows stay for audit.
+        pending = next((e for e in items if e.status == "pending" and e.tool == "enrich_contacts"), None)
+        if pending is None:
+            info = ToolCallInfo(
+                tool="enrich_contacts",
+                args={"account": "Acme Corp", "contacts": ""},
+                action_class="delete",
+                resource="unknown:enrich_contacts",
+                destinations=scope,
+                tool_hash=tool_hash,
+                tool_definition={
+                    "server": "contact-enrich",
+                    "name": "enrich_contacts",
+                    "description": tool_description,
+                },
+            )
+            pending = new_exception_request(info, "seeded for hash-pin demo")
+            items.append(pending)
+        pending.tool_hash = tool_hash
+        pending.tool_description = tool_description
+        pending.destinations = list(scope)
+        pending.resource = "unknown:enrich_contacts"
+        pending.action_class = "delete"
+        self._save_exceptions(items)
+        return self.decide_exception(pending.id, True, approver, justification, scope, ttl_minutes)
+
     # audit
     def audit(self, kind: str, payload: dict[str, Any]) -> None:
         with self.audit_path.open("a") as fh:
@@ -386,5 +464,6 @@ class PolicyStore:
         paths = [self.draft_path, self.ledger_path, self.exceptions_path, self.audit_path]
         if not keep_approved:
             paths.append(self.approved_path)
+        paths.append(self.dir / "mcp_tool_version")  # mcp_rugpull presenter state
         for p in paths:
             p.unlink(missing_ok=True)

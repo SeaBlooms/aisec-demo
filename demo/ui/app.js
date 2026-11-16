@@ -10,6 +10,12 @@ const VERDICT_SUB = {
   learned: "Review the drafted policy, then approve it. Everything not in it will be denied.",
   clean: "",
 };
+const verdictSub = (outcome, run) => {
+  if (outcome === "resisted" && run?.scenario === "mcp_rugpull") {
+    return "This scenario needs the rugpull flip first — Shared doc tab, then Run under Enforce.";
+  }
+  return VERDICT_SUB[outcome] || "";
+};
 const DECISION_LABEL = { allow: "Allowed", deny: "Blocked", observe: "Observed", none: "No control" };
 const MODE_BUTTON = { none: "No defense", hardened_prompt: "Harden the prompt", learn: "Learn", enforce: "Enforce default deny" };
 const SCENARIO_BUTTON = {
@@ -17,9 +23,11 @@ const SCENARIO_BUTTON = {
   poisoned_v1: "Poisoned shared doc v1",
   poisoned_v2: "Poisoned shared doc v2",
   poisoned_tool: "Poisoned MCP tool",
+  mcp_rugpull: "MCP rugpull",
 };
-const SCENARIO_KEYS = ["5", "6", "7", "0"];
+const SCENARIO_KEYS = ["5", "6", "7", "0", "-"];
 const shortModel = (label) => String(label).replace(/^Claude /, "").replace(/ \(offline\)$/, "");
+const shortHash = (h) => (h ? String(h).slice(0, 12) : "");
 
 const S = {
   cfg: null,
@@ -32,6 +40,7 @@ const S = {
   card: null,
   tab: "score",
   docView: "visible",
+  mcpDocView: "live", // approved | live — only for mcp_rugpull
   running: false,
   previewing: false,
 };
@@ -307,9 +316,10 @@ function handle(ev) {
       const c = ev.call;
       const card = el("div", `card${ev.exfiltration ? " exfil" : ""}`);
       const unvetted = String(c.resource).startsWith("unknown:");
+      const hash = c.tool_hash ? ` \u00b7 sha256:${esc(shortHash(c.tool_hash))}` : "";
       card.innerHTML = `<div class="what">${esc(ev.plain)}</div>
         <div class="meta"><span class="chip ${c.action_class}">${unvetted ? "unvetted tool" : c.action_class}</span>
-        <span class="mono">${esc(c.tool)} \u00b7 ${esc(c.resource)}${c.destinations.length ? " \u2192 " + esc(c.destinations.join(", ")) : ""}</span></div>`;
+        <span class="mono">${esc(c.tool)} \u00b7 ${esc(c.resource)}${c.destinations.length ? " \u2192 " + esc(c.destinations.join(", ")) : ""}${hash}</span></div>`;
       S.card = card;
       addCard(card);
       break;
@@ -343,7 +353,7 @@ function handle(ev) {
       break;
     case "run_finished": {
       if (ev.error) break;
-      setVerdict(ev.outcome, ev.verdict, VERDICT_SUB[ev.outcome] || "");
+      setVerdict(ev.outcome, ev.verdict, verdictSub(ev.outcome, S.lastStarted));
       recordScore(S.lastStarted || {}, ev.outcome);
       const next = { learned: "policy", blocked: "exceptions", compromised: "outbox" }[ev.outcome];
       if (next) showTab(next);
@@ -364,7 +374,9 @@ function handle(ev) {
 const loadScore = () => JSON.parse(localStorage.getItem(SCORE_KEY) || "{}");
 
 function recordScore(run, outcome) {
-  if (!run.scenario || !run.scenario.startsWith("poisoned") || !run.model) return;
+  if (!run.scenario || !run.model) return;
+  const scored = run.scenario.startsWith("poisoned") || run.scenario === "mcp_rugpull";
+  if (!scored) return;
   if (!["none", "hardened_prompt", "enforce"].includes(run.mode)) return;
   const s = loadScore();
   s[`${run.mode}|${run.model}|${run.scenario}`] = outcome;
@@ -380,6 +392,7 @@ function renderScore() {
     ["none", "newer", "Upgrade the model", name("newer")],
     ["enforce", null, "Control the action", "default deny \u00b7 either model"],
   ];
+  const cols = ["poisoned_v1", "poisoned_v2", "poisoned_tool", "mcp_rugpull"];
   const outcome = (mode, model, sc) => {
     if (model) return s[`${mode}|${model}|${sc}`];
     const seen = ["older", "newer"].map((k) => s[`${mode}|${k}|${sc}`]).filter(Boolean);
@@ -392,16 +405,16 @@ function renderScore() {
   $("panel-score").innerHTML = `
     <h3>Fix the model vs. control the action</h3>
     <table class="score">
-      <tr><th></th><th>Shared doc v1<br><small>blunt</small></th><th>Shared doc v2<br><small>disguised</small></th><th>MCP tool<br><small>third-party</small></th></tr>
+      <tr><th></th><th>Shared doc v1<br><small>blunt</small></th><th>Shared doc v2<br><small>disguised</small></th><th>MCP tool<br><small>unvetted</small></th><th>MCP rugpull<br><small>approved, then changed</small></th></tr>
       ${rows
         .map(
           ([m, model, label, sub]) =>
-            `<tr><td class="rowlabel">${label}<small>${sub}</small></td>${["poisoned_v1", "poisoned_v2", "poisoned_tool"].map((sc) => cell(m, model, sc)).join("")}</tr>`
+            `<tr><td class="rowlabel">${label}<small>${sub}</small></td>${cols.map((sc) => cell(m, model, sc)).join("")}</tr>`
         )
         .join("")}
     </table>
     <div class="takeaway">Hardened prompts and model upgrades are signatures: they catch the attacks someone anticipated.
-      Default deny doesn't need to recognize the attack. It only needs to know what the agent is allowed to do.</div>
+      Default deny doesn't need to recognize the attack. It only needs to know what the agent is allowed to do — including the hash of the tool that was approved.</div>
     <p class="hint"><a href="#" id="clearScore" style="color:var(--muted)">Clear scoreboard</a></p>`;
   $("clearScore").onclick = (e) => {
     e.preventDefault();
@@ -414,28 +427,85 @@ function renderScore() {
 
 async function renderDoc() {
   const d = await api(`/api/doc?scenario=${S.scenario}`);
+  const rugpull = S.scenario === "mcp_rugpull" && d.mcp_tool;
   let body;
-  if (S.docView === "visible") {
-    body = esc(d.visible);
+  let hiddenNote;
+  let toggle;
+  if (rugpull) {
+    const side = S.mcpDocView === "approved" ? d.mcp_tool.approved : d.mcp_tool.live;
+    const label = S.mcpDocView === "approved" ? "Approved definition" : "What the agent reads now";
+    body = `<p class="hint">${esc(label)} \u00b7 sha256:${esc(side.short_hash)} \u00b7 version <b>${esc(d.mcp_tool.version)}</b>${
+      d.mcp_tool.drifted ? ' <span class="chip deny">definition changed</span>' : ""
+    }</p><pre class="doc">${esc(side.description)}</pre>`;
+    hiddenNote = d.mcp_tool.drifted
+      ? `<p class="hint">Approved sha256:${esc(d.mcp_tool.approved.short_hash)} vs live sha256:${esc(d.mcp_tool.live.short_hash)}. Same tool name; different program. Enforce + Run should <b>Block</b> on the hash mismatch.</p>`
+      : `<p class="hint"><b>Still benign</b> — the model will not call this tool (description says not to send contacts). Do not approve enrich_contacts from the Exceptions tab (that pins the <i>rugpulled</i> hash). Click <b>Approve by name, then rugpull</b>, then Run under Enforce.</p>`;
+    toggle = `
+      <div class="toggle seg">
+        <button id="mcpApproved" class="${S.mcpDocView === "approved" ? "active" : ""}">Approved definition</button>
+        <button id="mcpLive" class="${S.mcpDocView === "live" ? "active" : ""}">What the agent reads now</button>
+      </div>
+      <div class="row" style="margin:10px 0;gap:8px;flex-wrap:wrap">
+        <button id="rugpullBtn">Rugpull the tool</button>
+        <button id="approveRugpullBtn" class="approve">Approve by name, then rugpull</button>
+        <button id="resetToolBtn">Reset to benign</button>
+      </div>`;
   } else {
-    body = esc(d.raw);
-    for (const h of d.hidden) body = body.replace(esc(h), `<mark>${esc(h)}</mark>`);
+    if (S.docView === "visible") {
+      body = esc(d.visible);
+    } else {
+      body = esc(d.raw);
+      for (const h of d.hidden) body = body.replace(esc(h), `<mark>${esc(h)}</mark>`);
+    }
+    hiddenNote = d.hidden.length
+      ? `<p class="hint">${d.hidden.length} hidden passage(s): invisible to the CSM, but read by the agent.</p>`
+      : `<p class="hint">No hidden content in this version.</p>`;
+    toggle = `
+      <div class="toggle seg">
+        <button id="docVisible" class="${S.docView === "visible" ? "active" : ""}">What the CSM sees</button>
+        <button id="docRaw" class="${S.docView === "raw" ? "active" : ""}">What the agent reads</button>
+      </div>`;
+    body = `<div class="doc">${body}</div>`;
   }
-  const hiddenNote = d.hidden.length
-    ? `<p class="hint">${d.hidden.length} hidden passage(s): invisible to the CSM, but read by the agent.</p>`
-    : `<p class="hint">No hidden content in this version.</p>`;
-  $("panel-doc").innerHTML = `
-    <div class="toggle seg">
-      <button id="docVisible" class="${S.docView === "visible" ? "active" : ""}">What the CSM sees</button>
-      <button id="docRaw" class="${S.docView === "raw" ? "active" : ""}">What the agent reads</button>
-    </div>
-    ${hiddenNote}
-    <div class="doc">${body}</div>`;
-  $("docVisible").onclick = () => ((S.docView = "visible"), renderDoc());
-  $("docRaw").onclick = () => ((S.docView = "raw"), renderDoc());
-  const mark = document.querySelector("#panel-doc mark");
-  const panel = $("panel-doc");
-  if (mark) panel.scrollTop = mark.offsetTop - 120;
+  $("panel-doc").innerHTML = `${toggle}${hiddenNote}${body}`;
+  if (rugpull) {
+    $("mcpApproved").onclick = () => ((S.mcpDocView = "approved"), renderDoc());
+    $("mcpLive").onclick = () => ((S.mcpDocView = "live"), renderDoc());
+    $("rugpullBtn").onclick = async () => {
+      try {
+        await api("/api/mcp-tool", { method: "POST", body: { action: "rugpull" } });
+        S.mcpDocView = "live";
+        renderDoc();
+      } catch (e) {
+        alert(e.message);
+      }
+    };
+    $("approveRugpullBtn").onclick = async () => {
+      try {
+        await api("/api/mcp-tool", { method: "POST", body: { action: "approve_then_rugpull" } });
+        S.mcpDocView = "live";
+        renderDoc();
+        if (S.tab === "policy") renderPolicy();
+        refreshCounts();
+      } catch (e) {
+        alert(e.message);
+      }
+    };
+    $("resetToolBtn").onclick = async () => {
+      try {
+        await api("/api/mcp-tool", { method: "POST", body: { action: "set", version: "benign" } });
+        S.mcpDocView = "approved";
+        renderDoc();
+      } catch (e) {
+        alert(e.message);
+      }
+    };
+  } else {
+    $("docVisible").onclick = () => ((S.docView = "visible"), renderDoc());
+    $("docRaw").onclick = () => ((S.docView = "raw"), renderDoc());
+    const mark = document.querySelector("#panel-doc mark");
+    if (mark) $("panel-doc").scrollTop = mark.offsetTop - 120;
+  }
 }
 
 async function renderLedger() {
@@ -472,14 +542,19 @@ async function renderLedger() {
 function ruleText(r) {
   let t = `${r.action_classes.join("/").toUpperCase()} via ${r.tools.join(", ")} on ${r.resources.join(", ")}`;
   if (r.destinations && r.destinations.length) t += ` \u2192 only to ${r.destinations.join(", ")}`;
+  if (r.tool_hashes && r.tool_hashes.length) t += ` \u00b7 sha256:${shortHash(r.tool_hashes[0])}`;
   return t;
 }
 
 function ruleHtml(r, cls = "") {
   const exp = r.expires_at ? ` \u00b7 expires ${time(r.expires_at)}` : "";
   const why = r.justification ? ` \u00b7 ${esc(r.justification)}` : "";
+  const pins =
+    r.tool_hashes && r.tool_hashes.length
+      ? ` \u00b7 pinned ${r.tool_hashes.map((h) => `sha256:${shortHash(h)}`).join(", ")}`
+      : "";
   return `<div class="rule ${cls}"><div class="head">${cls === "proposed" ? "NEEDS JUSTIFICATION" : "ALLOW"}: ${esc(ruleText(r))}</div>
-    <div class="mono">${esc(r.id)} \u00b7 ${esc(r.source)}${why}${exp}</div></div>`;
+    <div class="mono">${esc(r.id)} \u00b7 ${esc(r.source)}${why}${pins}${exp}</div></div>`;
 }
 
 async function renderPolicy() {
@@ -534,10 +609,14 @@ async function renderExceptions() {
         return `<div class="exc ${x.status}">${head}<div class="row"><span class="chip ${x.status === "approved" ? "allow" : "deny"}">${x.status}</span>
           <span class="mono">${esc(x.justification)}${scope}${exp}</span></div></div>`;
       }
-      return `<div class="exc" data-id="${esc(x.id)}">${head}
+      const destDefault = x.tool === "enrich_contacts" ? "contact-enrich.io" : "acme.com";
+      const hashNote = x.tool_hash
+        ? `<p class="hint mono">Pins tool definition sha256:${esc(shortHash(x.tool_hash))}</p>`
+        : "";
+      return `<div class="exc" data-id="${esc(x.id)}">${head}${hashNote}
         <details><summary class="mono">What the agent tried to send</summary><pre>${esc(x.args_preview)}</pre></details>
         <textarea placeholder="Business justification (required), e.g. Send QBR invite to Acme stakeholders, ticket CS-1042"></textarea>
-        <div class="row"><span class="mono">Allow only to</span><input value="acme.com" title="Destination domains (comma-separated)" />
+        <div class="row"><span class="mono">Allow only to</span><input value="${esc(destDefault)}" title="Destination domains (comma-separated)" />
           <select><option value="15">15 min</option><option value="60" selected>1 hour</option><option value="1440">1 day</option></select></div>
         <div class="row"><button class="approve">Approve narrow exception</button><button class="reject">Reject</button></div>
         <p class="hint">Approving does not open the requested destination unless it is inside the scope you set.</p></div>`;

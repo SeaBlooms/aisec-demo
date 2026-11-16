@@ -7,6 +7,8 @@ never on what the model says it is doing.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -36,6 +38,63 @@ EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
 # Tools served by third-party MCP servers, and the domain each server sends data to. The gateway knows
 # which server a tool lives on; it does not know (or trust) what the tool says it does.
 THIRD_PARTY_TOOLS = {"enrich_contacts": "contact-enrich.io"}
+
+
+def tool_contents_hash(
+    *,
+    server: str | None,
+    name: str,
+    description: str | None,
+    input_schema: dict[str, Any] | None,
+) -> str:
+    """SHA-256 of the advertised MCP tool definition (lockfile-style pin).
+
+    `server` is the live toolset id (e.g. contact-enrich), not a friendly label.
+    """
+    payload = {
+        "server": server or "",
+        "name": name,
+        "description": description or "",
+        "input_schema": input_schema or {},
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def short_hash(digest: str, n: int = 12) -> str:
+    return digest[:n]
+
+
+def fingerprint_tool(name: str, tool: Any) -> tuple[str, dict[str, Any]]:
+    """Hash the live MCP advertised definition from a pydantic-ai ToolsetTool.
+
+    `server` is the live toolset id (Phase 0). Prefer `tool_def.toolset_id`; fall back to
+    `tool.toolset.id` so a lone MCPToolset and the same tool under CombinedToolset hash alike
+    (CombinedToolset fills toolset_id; a direct MCPToolset leaves it unset).
+    Raises ValueError if the definition cannot be fingerprinted (caller must fail closed).
+    """
+    tool_def = getattr(tool, "tool_def", None)
+    if tool_def is None:
+        raise ValueError(f"tool {name!r} has no tool_def")
+    server = getattr(tool_def, "toolset_id", None) or getattr(getattr(tool, "toolset", None), "id", None) or ""
+    def_name = getattr(tool_def, "name", None) or name
+    description = getattr(tool_def, "description", None)
+    schema = getattr(tool_def, "parameters_json_schema", None)
+    if not isinstance(schema, dict):
+        raise ValueError(f"tool {name!r} has no parameters_json_schema")
+    definition = {
+        "server": server,
+        "name": def_name,
+        "description": description or "",
+        "input_schema": schema,
+    }
+    digest = tool_contents_hash(
+        server=definition["server"],
+        name=definition["name"],
+        description=definition["description"],
+        input_schema=definition["input_schema"],
+    )
+    return digest, definition
 
 
 def account_slug(name: str | None) -> str:
@@ -108,9 +167,13 @@ class ToolCallInfo:
     resource: str
     destinations: list[str]
     agent: str = AGENT_ID
+    # Live MCP advertised definition fingerprint. None means the caller did not capture one
+    # (legacy / name-only paths). When a rule pins tool_hashes, a missing live hash is a deny.
+    tool_hash: str | None = None
+    tool_definition: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "tool": self.tool,
             "args": self.args,
             "action_class": self.action_class,
@@ -118,15 +181,45 @@ class ToolCallInfo:
             "destinations": self.destinations,
             "agent": self.agent,
         }
+        if self.tool_hash is not None:
+            out["tool_hash"] = self.tool_hash
+        if self.tool_definition is not None:
+            out["tool_definition"] = self.tool_definition
+        return out
 
 
-def describe(tool: str, args: dict[str, Any], agent: str = AGENT_ID) -> ToolCallInfo:
+def describe(
+    tool: str,
+    args: dict[str, Any],
+    agent: str = AGENT_ID,
+    *,
+    tool_hash: str | None = None,
+    tool_definition: dict[str, Any] | None = None,
+) -> ToolCallInfo:
     spec = TOOLS.get(tool)
     if spec is None:
         # Unknown tools are treated as the most dangerous class so default deny catches them.
         server = THIRD_PARTY_TOOLS.get(tool)
-        return ToolCallInfo(tool, args, "delete", f"unknown:{tool}", [server] if server else [], agent)
-    return ToolCallInfo(tool, args, spec.action_class, spec.resource(args), spec.destinations(args), agent)
+        return ToolCallInfo(
+            tool,
+            args,
+            "delete",
+            f"unknown:{tool}",
+            [server] if server else [],
+            agent,
+            tool_hash=tool_hash,
+            tool_definition=tool_definition,
+        )
+    return ToolCallInfo(
+        tool,
+        args,
+        spec.action_class,
+        spec.resource(args),
+        spec.destinations(args),
+        agent,
+        tool_hash=tool_hash,
+        tool_definition=tool_definition,
+    )
 
 
 def is_unvetted(info: ToolCallInfo) -> bool:

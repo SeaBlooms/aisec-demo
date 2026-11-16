@@ -9,6 +9,7 @@ __pycache__/
 demo/policy/*.yaml
 demo/policy/*.json
 demo/policy/*.jsonl
+demo/policy/mcp_tool_version
 demo/sandbox/
 demo/traces/runs/
 demo/traces/reliability/
