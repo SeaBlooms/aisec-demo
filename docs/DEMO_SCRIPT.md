@@ -193,7 +193,7 @@ Answer in one line and keep moving; save depth for Q&A.
 
 - **"Is that a real model?"** "Yes, Claude Haiku 4.5 and 5.5 over the API, real tool calls. Only the outbox is fake."
 - **"Would that really get past people?"** "You just looked at it. White text in a shared doc: the CSM never sees it, and the agent reads it as normal text."
-- **"What about the blunt 'ignore all previous instructions' version?"** "Both models catch that one every time, even with no defense. That's the attack everyone already has a signature for."
+- **"What about the blunt 'ignore all previous instructions' version?"** "Haiku 4.5 catches that one every time, with or without the hardened prompt. Haiku 5.5 wasn't re-run on it; it already caught the disguised version. That's the attack everyone already has a signature for."
 - **"Isn't your hardened prompt a straw man?"** "It's the kind teams ship. Stronger hardening helps; it's still a detector. I have a slide on this for Q&A."
 - **"How often does this happen?"** "Twenty runs each: the disguised doc got through on Haiku 4.5 twenty out of twenty, with or without the hardened prompt. Default deny blocked every attempt."
 

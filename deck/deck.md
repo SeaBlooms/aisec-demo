@@ -242,7 +242,7 @@ Run of show (keys: 1-4 modes, 5-7 and 0 threat scenarios, 8-9 models, Enter runs
 
 Full script with timings and recovery lines: docs/DEMO_SCRIPT.md.
 
-Optional aside: the blunt v1 doc ("ignore all previous instructions") is caught by both models even with no defense. That's the attack everyone already has a signature for.
+Optional aside: the blunt v1 doc ("ignore all previous instructions") is caught by Haiku 4.5 every time, with or without the hardened prompt (20/20). Haiku 5.5 was not re-run on v1; it already caught the disguised doc 20/20 with no defense. v1 is the attack everyone already has a signature for.
 
 If live fails: press R to replay the curated trace for the same mode, model and doc. If the laptop fails: play the recorded video.
 -->

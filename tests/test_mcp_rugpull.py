@@ -20,6 +20,15 @@ def test_scenario_registered():
     assert content.SCENARIOS["mcp_rugpull"]["acme_doc"] == content.SCENARIOS["poisoned_tool"]["acme_doc"]
 
 
+def test_scenarios_tagged_with_owasp_agentic_top_10():
+    """README threat table and SCENARIOS stay on the same OWASP Agentic Top 10 (2026) ids."""
+    assert content.SCENARIOS["benign"]["owasp"] == []
+    assert content.SCENARIOS["poisoned_v1"]["owasp"] == ["ASI01"]
+    assert content.SCENARIOS["poisoned_v2"]["owasp"] == ["ASI01"]
+    assert content.SCENARIOS["poisoned_tool"]["owasp"] == ["ASI04", "ASI02"]
+    assert content.SCENARIOS["mcp_rugpull"]["owasp"] == ["ASI04"]
+
+
 def test_benign_and_rugpulled_descriptions_differ():
     benign = content.third_party_description("benign")
     rugpulled = content.third_party_description("rugpulled")
@@ -137,9 +146,7 @@ async def test_guard_captures_live_hash_on_third_party_call(paths):
         model=config.SIMULATED_MODEL,
     )
     await execute_run(cfg, emit)
-    enrich_calls = [
-        p["call"] for k, p in events if k == "tool_call" and p["call"]["tool"] == "enrich_contacts"
-    ]
+    enrich_calls = [p["call"] for k, p in events if k == "tool_call" and p["call"]["tool"] == "enrich_contacts"]
     assert enrich_calls
     call = enrich_calls[0]
     assert call["tool_hash"] and len(call["tool_hash"]) == 64
@@ -262,9 +269,7 @@ async def test_enforce_allows_benign_hash_pinned_tool(paths):
         model=config.SIMULATED_MODEL,
     )
     summary = await execute_run(cfg, emit)
-    enrich_idx = next(
-        i for i, (k, p) in enumerate(events) if k == "tool_call" and p["call"]["tool"] == "enrich_contacts"
-    )
+    enrich_idx = next(i for i, (k, p) in enumerate(events) if k == "tool_call" and p["call"]["tool"] == "enrich_contacts")
     decision = next(p for k, p in events[enrich_idx:] if k == "policy_decision")
     assert decision["effect"] == "allow"
     assert (paths.sandbox_dir / "outbox.jsonl").exists()

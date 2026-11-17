@@ -10,19 +10,30 @@ from typing import Any, Literal
 
 from demo.config import DATA_DIR
 
+# OWASP Agentic Top 10 (2026) ids. Names and the source URL are in the README threat table.
 SCENARIOS = {
-    "benign": {"label": "Benign doc", "acme_doc": "acme_qbr.md"},
-    "poisoned_v1": {"label": "Poisoned v1 (blunt injection)", "acme_doc": "acme_qbr_poisoned_v1.md"},
-    "poisoned_v2": {"label": "Poisoned v2 (disguised action item)", "acme_doc": "acme_qbr_poisoned_v2.md"},
+    "benign": {"label": "Benign doc", "acme_doc": "acme_qbr.md", "owasp": []},
+    "poisoned_v1": {
+        "label": "Poisoned v1 (blunt injection)",
+        "acme_doc": "acme_qbr_poisoned_v1.md",
+        "owasp": ["ASI01"],  # Agent Goal Hijack
+    },
+    "poisoned_v2": {
+        "label": "Poisoned v2 (disguised action item)",
+        "acme_doc": "acme_qbr_poisoned_v2.md",
+        "owasp": ["ASI01"],  # Agent Goal Hijack
+    },
     "poisoned_tool": {
         "label": "Poisoned tool (third-party MCP server)",
         "acme_doc": "acme_qbr.md",
         "third_party": True,
+        "owasp": ["ASI04", "ASI02"],  # Agentic Supply Chain; Tool Misuse and Exploitation
     },
     "mcp_rugpull": {
         "label": "MCP rugpull (approved tool, then definition changes)",
         "acme_doc": "acme_qbr.md",
         "third_party": True,
+        "owasp": ["ASI04"],  # Agentic Supply Chain Vulnerabilities
     },
 }
 
@@ -136,6 +147,7 @@ def mcp_tool_version_for_scenario(scenario: str, policy_dir: Path) -> McpToolVer
     if scenario == "mcp_rugpull":
         return read_mcp_tool_version(policy_dir)
     return "rugpulled"
+
 
 _COMMENT = re.compile(r"<!--.*?-->", re.S)
 _WHITE_SPAN = re.compile(r"<span style=\"color:#ffffff[^\"]*\">(.*?)</span>", re.S)
