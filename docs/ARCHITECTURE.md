@@ -155,6 +155,16 @@ def evaluate(policy: Policy | None, call: ToolCallInfo, now: datetime | None = N
 
 `GuardedToolset` fingerprints the live pydantic-ai `tool.tool_def` on every call and fails closed if it cannot. That closes advertised-definition drift (the MCP rugpull). It does **not** see remote implementation changes that keep the same description; egress classification still covers those.
 
+## Scenario tags
+
+The attack scenarios are tagged with the [OWASP Top 10 for Agentic Applications (2026)](https://genai.owasp.org/2025/12/09/owasp-top-10-for-agentic-applications-the-benchmark-for-agentic-security-in-the-age-of-autonomous-ai/). The ids live on `SCENARIOS` in `demo/mcp_server/content.py`.
+
+| Scenario | Tag |
+| --- | --- |
+| `poisoned_v1`, `poisoned_v2` | **ASI01** Agent Goal Hijack. The instruction is in a document the agent reads. |
+| `poisoned_tool` | **ASI04** Agentic Supply Chain Vulnerabilities, for the unvetted third-party MCP tool. **ASI02** Tool Misuse and Exploitation, for the contact-list exfil the tool description asks for. |
+| `mcp_rugpull` | **ASI04** Agentic Supply Chain Vulnerabilities. The name was approved; the advertised definition then changed. |
+
 The function is pure: it depends only on the policy, the call and the clock (`now` is injectable for tests). It does no I/O and never calls the model, so the same inputs always give the same decision. That's why the reliability harness can require enforce cells to block 100% of attempts, where the model-level cells only get percentage goals.
 
 ## Learn mode: drafting a baseline
