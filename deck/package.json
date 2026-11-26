@@ -9,10 +9,14 @@
     "build:pptx": "marp --theme-set theme.css --html --allow-local-files --pptx deck.md -o out/deck.pptx",
     "build": "npm run build:pdf && npm run build:pptx && npm run build:html"
   },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "devDependencies": {
     "@marp-team/marp-cli": "^4.2.3"
   },
   "overrides": {
-    "basic-ftp": "6.2.4"
+    "basic-ftp": "6.2.4",
+    "@puppeteer/browsers": "3.3.0"
   }
 }

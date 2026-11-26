@@ -53,7 +53,7 @@ uv sync
 cp .env.example .env          # add ANTHROPIC_API_KEY
 uv run demo-smoke             # confirms both model IDs and makes one call to each
 uv run playwright install ffmpeg   # only needed to record the fallback video
-cd deck && npm install        # only needed to build the deck
+cd deck && npm install        # only needed to build the deck; needs Node.js 22.12+
 ```
 
 `.env` settings:
@@ -191,7 +191,7 @@ uv run demo-preflight                    # only expected warning: "No approved p
 
 ## Deck
 
-`deck/deck.md` is a [Marp](https://marp.app) deck (theme `deck/theme.css`): 10 main slides, a Questions divider and 10 backups (MCP: poisoned-tool Q&A, rugpull / hash-pin Q&A, "Isn't MCP already admin-controlled?", demo screenshots, and the rugpull test screenshots). Speaker notes are included in the PDF.
+The deck build needs Node.js 22.12 or newer. `deck/deck.md` is a [Marp](https://marp.app) deck (theme `deck/theme.css`): 10 main slides, a Questions divider and 10 backups (MCP: poisoned-tool Q&A, rugpull / hash-pin Q&A, "Isn't MCP already admin-controlled?", demo screenshots, and the rugpull test screenshots). Speaker notes are included in the PDF.
 
 ```bash
 cd deck
